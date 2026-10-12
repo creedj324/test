@@ -211,10 +211,23 @@ interface Progression {
   notes: string;                // teaching notes (markdown)
 }
 
-interface Song {                // user-entered chart (e.g. a standard from a fake book)
+interface Song {                // bundled tune chart (THEORY_SPEC §10.5) or user-entered chart
   id: string; title: string; key?: KeyCenter; tempo: number; style: Progression['style'];
   form: { label: string; bars: { chords: { symbol: string; beats: number }[] }[] }[];  // A, B, ...
+  difficulty?: 1|2|3|4|5;
+  melody?: LickNote[];          // only for public-domain tunes or user-entered melodies
+  source: 'bundled'|'user';
 }
+
+interface CurriculumUnit {      // FEATURES F0: ordered learning path with mastery gates
+  id: string; order: number; title: string;
+  prerequisites: string[];      // unit ids
+  activities: { feature: string; itemIds: string[] }[];
+  passCriteria: { metric: string; threshold: number }[];  // e.g. { metric: 'targetHitRate', threshold: 0.8 }
+  unlocksScales?: ScaleId[];    // e.g. unit 7 unlocks altered, halfWholeDim, lydianDominant
+}
+
+interface RhythmCell { id: string; name: string; beats: number; onsets: { start: number; dur: number }[] }
 
 interface LickNote {
   degree: Degree;               // relative to the lick's reference chord root
@@ -226,7 +239,7 @@ interface LickNote {
 }
 interface Lick {
   id: string; name: string;
-  context: 'V7'|'ii-V'|'ii-V-I'|'minor ii-V'|'maj7'|'m7'|'blues-I7'|'blues-IV7'|'blues-turnaround'|'minor-blues'|'static-minor';
+  context: 'V7'|'ii-V'|'ii-V-I'|'minor ii-V'|'maj7'|'m7'|'blues-I7'|'blues-IV7'|'blues-turnaround'|'minor-blues'|'static-minor'|'turnaround'|'rhythm-A';
   chords: { roman: string; beats: number }[];   // the harmony the lick is written over
   concepts: string[];           // ['enclosure','guide-tone','chromatic-approach','arpeggio','bebop-scale']
   difficulty: 1|2|3|4|5;
@@ -239,7 +252,7 @@ interface Lick {
 interface VoicingShape {
   id: string;
   quality: ChordQuality;
-  family: 'shell'|'drop2'|'drop3'|'rootless'|'quartal'|'triad'|'freddieGreen'|'other';
+  family: 'shell'|'drop2'|'drop3'|'rootless'|'quartal'|'soWhat'|'sixthDim'|'triad'|'freddieGreen'|'other';
   stringSet: number[];          // e.g. [0,2,3] for shells on 6th string
   degrees: (Degree|null)[];     // per string low→high, null = muted
   rootString: number | null;    // null for rootless
@@ -247,7 +260,7 @@ interface VoicingShape {
 
 interface TechniqueDrill {
   id: string; name: string;
-  category: 'chromatic'|'spider'|'legato'|'alternatePicking'|'economyPicking'|'stringSkipping'|'stretch'|'arpeggio'|'bending'|'vibrato';
+  category: 'warmup'|'minimumPressure'|'chromatic'|'spider'|'legato'|'alternatePicking'|'economyPicking'|'stringSkipping'|'stretch'|'arpeggio'|'approach'|'bending'|'vibrato';
   pattern: FretPos[] | { generator: string; params: Record<string, number> };
   subdivision: 1|2|3|4|6;       // notes per beat
   startBpm: number; goalBpm: number;
@@ -255,7 +268,7 @@ interface TechniqueDrill {
 }
 
 // ---------- practice / storage ----------
-interface SrsState { itemId: string; ease: number; intervalDays: number; due: string; reps: number; lapses: number }
+interface SrsState { itemId: string; ease: number; intervalDays: number; due: string; reps: number; lapses: number; lastResponseMs?: number }
 interface TempoRecord { itemId: string; key?: string; bestCleanBpm: number; history: { date: string; bpm: number; accuracy: number }[] }
 interface PracticeSession { id: string; date: string; durationSec: number; blocks: { feature: string; itemId?: string; seconds: number; score?: number }[] }
 interface Settings {
@@ -263,6 +276,8 @@ interface Settings {
   maxStretchFrets: 3|4|5|6;     // dexterity-aware fingering
   noteNames: 'sharps'|'flats'|'auto'; showDegreesInsteadOfNames: boolean;
   micLatencyMs: number; micNoiseGateDb: number; dailyGoalMin: number;
+  gentleMode: boolean;          // default true: rest prompts, drill caps (§6.4)
+  maxStretchRaisedAt?: string;  // ISO date; maxStretch may rise at most one step per week
 }
 ```
 
@@ -292,7 +307,7 @@ romanToChord(roman: string, key: KeyCenter): ChordSymbol
 analyzeProgression(chords: ChordSymbol[] | Song): AnalyzedChord[]   // key regions + roman + scales
 detectKey(chords: ChordSymbol[]): { key: KeyCenter; confidence: number }[]  // ranked
 notesOnFretboard(notes: Note[] | PitchClass[], tuning: Tuning, fretRange?: [number, number]): FretPos[]
-positions(scale: ScaleId, root: Note, system: 'caged'|'3nps'|'position'): FretPos[][]
+positions(scale: ScaleId, root: Note, system: 'position'|'caged'|'3nps'|'singleString', maxStretch: number): FretPos[][]
 generateVoicings(c: ChordSymbol, family: VoicingShape['family'], tuning: Tuning): Voicing[]
 voiceLead(prog: ChordSymbol[], family, opts): Voicing[]             // smoothest path
 fingerLine(notes: Midi[], opts: { tuning; maxStretch; preferredPosition? }): FretPos[]
@@ -339,8 +354,23 @@ mic stream ─► AudioWorklet (2048-sample window, hop 256 @ 48 kHz)
 
 - **Matching rules** depend on the exercise: exact MIDI note (lick playback, fret quiz), any
   octave of a pitch class (find-the-note), any member of a set (land on a chord tone), or a
-  tier score (chord tone = 1.0, tension = 0.7, avoid note = 0, chromatic passing note on a
-  weak beat = neutral).
+  tier score.
+- **Tier scores.**
+  - Root, guide tone and chord tone score 1.0.
+  - Tensions score 0.7 in the target-note game and 0.9 in free improvisation. Upper extensions on
+    strong beats are idiomatic.
+  - Chromatic passing notes on weak beats are neutral.
+  - Avoid notes score 0 only when **sustained** (≥ ¼ beat) or left unresolved. An avoid note that
+    resolves by step within the beat is a suspension or appoggiatura (4 → 3 over maj7) and is
+    neutral.
+  - In a blues, the key's b3 and b5 over the I7/IV7/V7 chords are blue notes and score as tensions.
+- **Anticipation.** A target note landing up to an **eighth note before** the downbeat of a new
+  chord counts as landing on the new chord. Swing players anticipate the change on the "and" of 4.
+  This window scales with tempo, unlike the fixed ±120 ms window.
+- **Bends** are graded on their settled target pitch, not on the onset pitch.
+- **Rhythm and time feel** are reported separately from note choice: timing deviation per note,
+  measured swing ratio, and ahead/behind tendency. Scores are weighted by metric position and
+  duration.
 - **Calibration.** On first use, play a click through the speaker while the user strums a muted
   string on it 8 times. The median offset becomes `micLatencyMs`. A 3-second room-noise sample
   sets the noise gate.
@@ -350,19 +380,56 @@ mic stream ─► AudioWorklet (2048-sample window, hop 256 @ 48 kHz)
 
 ### 6.4 Practice system (`src/practice`)
 
-- **Spaced repetition (SM-2 variant)** for every learnable item: fretboard note cells, licks
-  (per key), voicings, progressions, and key-finding drills. Grades come from the mic grader
-  where possible and from self-rating ("again / hard / good / easy") otherwise.
-- **Tempo ladder.** Each drill and lick starts at `startBpm`, or 60% of the last clean tempo.
-  Two consecutive runs at ≥ 90% accuracy raise the tempo 4 BPM; a run under 70% lowers it
-  4 BPM. Records are kept per item and per key. Slow and accurate always beats fast and sloppy,
-  which matters for the dexterity goal.
-- **Planner.** Builds a daily session from a time budget (default 30 min) and a weighting
-  across the six goals:
-  warm-up/technique 15% · fretboard 15% · changes 25% · licks 20% · voicings/comping 15% ·
-  key-finding/ear 10%.
-  It pulls the items that are due in SRS first and rotates the key of the day around the circle
-  of fourths.
+- **Curriculum first, SRS second.** The learning path (FEATURES F0) decides which concepts
+  are active. SRS decides when to review the items inside unlocked units. SRS alone can't
+  sequence concepts.
+- **Spaced repetition (SM-2 variant)** for every learnable item: fretboard note cells, licks,
+  voicings, progressions, comping rhythms and key-finding drills.
+  - Grades come from the mic grader where possible, and from self-rating ("again / hard /
+    good / easy") otherwise.
+  - **A lick is one item**, not 12. Each review picks a key by rotation, and tempo records are
+    kept per key.
+  - **Fretboard cells are graded on fluency**: correct in under 1.5 s = good, correct but slower
+    = hard.
+- **Blocked, then interleaved.** New items are practiced blocked on first exposure. After an
+  item reaches 3 reps, it is reviewed in short 2–3 min slices mixed with other items, in a
+  random key. Interleaved practice improves retention in musicians (Carter & Grahn 2016;
+  Shea & Morgan 1979, contextual interference).
+- **Tempo ladder.**
+  - Each drill and lick starts at `startBpm`, or 80% of the last clean tempo.
+  - **3 consecutive clean runs** raise the tempo 4 BPM. A clean run means ≥ 95% correct notes
+    and timing standard deviation < 25 ms.
+  - A run under 70% lowers the tempo 4 BPM.
+  - Some runs alternate ±8 BPM around the target, and there are occasional short "burst" runs
+    above it (challenge-point framework, Guadagnoli & Lee 2004).
+  - At most about 8 ladder attempts per drill per day.
+  - Records are kept per item and per key. Slow and accurate always beats fast and sloppy, which
+    matters for the dexterity goal.
+- **Planner.** Builds a daily session from a time budget (default 30 min). Weights:
+
+  | Block | Weight |
+  | --- | --- |
+  | Warm-up (always first) | 7% |
+  | Technique | 10% |
+  | Fretboard | 13% |
+  | Changes / improvisation | 25% |
+  | Licks | 15% |
+  | Voicings / comping | 15% |
+  | Ear / singing / key-finding | 10% |
+  | Tune application (always last) | 5% |
+
+  It pulls the items that are due in SRS first, within unlocked curriculum units. It rotates the
+  key of the day around the circle of fourths. Every session ends with 3–5 min of free play over
+  the current tune so the material transfers to real playing.
+- **Health guardrails** (`gentleMode`, on by default):
+  - Prompt a 2–5 min break every 20–25 min of playing.
+  - Show periodic relaxation checks (thumb, shoulder, jaw).
+  - Show a "stop if pain, numbness or loss of control" notice. Any pain self-report ends the
+    session.
+  - `maxStretchFrets` can rise at most one step per week, and never during the first block.
+  - Weekly practice time may grow at most about 15% over the previous week. Sudden increases,
+    high repetition and perfectionism are risk factors for musician's focal dystonia, and
+    guitarists are among the most affected groups (Frucht review, PMC5502053).
 
 ### 6.5 Storage (`src/storage`)
 
@@ -376,6 +443,7 @@ Dexie database `fretwise`, version 1:
 | `sessions` | `id` | `date` |
 | `songs` | `id` | `title` |
 | `userLicks` | `id` | `context` |
+| `curriculum` | `unitId` | `status` |
 
 All access goes through repository functions. A backup exports and imports one JSON file,
 validated by zod and versioned for migrations.

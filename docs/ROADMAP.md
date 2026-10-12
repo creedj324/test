@@ -15,6 +15,8 @@ Phase 4  Voicings & library      ► WP8 (voicing engine) ─► WP9 (library UI
 Phase 5  Licks                   ► WP10 (fingering) ─► WP11 (lick content) ─► WP12 (lick trainer)
 Phase 6  Mic                     ► WP13 (pitch pipeline + tuner) ─► WP14 (graded modes everywhere), WP15 (fret quiz)
 Phase 7  Practice system         ► WP16 (storage+SRS+tempo) ─► WP17 (Today planner, Technique, Progress)
+                                                              ─► WP18 (Learning Path + Tune Study)
+                                 ► WP19 (Ear, singing, transcription; after WP13)
 ```
 
 **Parallel tracks.** Once WP1a's public API types are merged, WP2, WP3, WP5, WP8, and WP10 can
@@ -47,19 +49,22 @@ jazz progressions, a key finder, and the visual Changes Trainer, which covers mo
 - **Deps**: WP1a. **Owns**: `src/theory/fretboard.ts`
 - **Tasks**: note↔position, CAGED, 3NPS, position windows, pentatonic box numbering, octave
   shapes (SPEC §6).
-- **Accept**: snapshot tests of CAGED/3NPS for C and F♯ major; all 5 pentatonic boxes match
-  the standard boxes for A minor.
+- **Accept**: snapshot tests of position, CAGED, single-string and 3NPS systems for C and F♯
+  major; all 5 pentatonic boxes match the standard boxes for A minor; 3NPS patterns wider than
+  `maxStretch` are filtered out.
 
 ### WP1c: Chord-scale and note tiers
 - **Deps**: WP1a. **Owns**: `src/theory/analysis/chordScale.ts`
-- **Accept**: every row in SPEC §4.1 is tested; the fallback rule (SPEC §4.2) is tested on
-  V/ii, V/V, and V/vi in 3 keys; avoid-note tiers are correct.
+- **Accept**: every row in SPEC §4.1 is tested, including function-over-quality precedence;
+  the fallback rule (SPEC §4.2) is tested on V/ii, V/V, and V/vi in 3 keys; avoid-note tiers
+  are correct, including iii-7's two avoid notes and the blues blue-note rule.
 
 ### WP1d: Content schemas and loaders
 - **Deps**: WP1a. **Owns**: `src/content/`
-- **Tasks**: zod schemas, loaders, and the 15 progressions (SPEC §10.1) as JSON.
-- **Accept**: every progression parses and realizes in all 12 keys; a schema test runs over
-  all content.
+- **Tasks**: zod schemas, loaders, the 17 progressions (SPEC §10.1), the 10 rhythm cells (SPEC
+  §10.3a), and the 15 tune charts (SPEC §10.5) as JSON. Melodies only for public-domain tunes.
+- **Accept**: every progression and tune parses and realizes in all 12 keys; every tune's
+  analysis gives a sensible key (reviewed by hand once); a schema test runs over all content.
 
 ### WP2: `<Fretboard>` and Fretboard Explorer (F2)
 - **Deps**: WP1b. **Owns**: `src/ui/Fretboard/`, `src/features/explorer/`
@@ -81,7 +86,8 @@ jazz progressions, a key finder, and the visual Changes Trainer, which covers mo
 
 ### WP5: Harmonic analysis
 - **Deps**: WP1c. **Owns**: `src/theory/analysis/{key,roman}.ts`
-- **Accept**: every golden example in SPEC §9 passes; analyzing a 64-chord song takes < 20 ms.
+- **Accept**: every golden example in SPEC §9 passes, including the blues-label override and
+  the backdoor-before-ii–V priority; analyzing a 64-chord song takes < 20 ms.
 
 ### WP6: Key Finder screen (F5, without the drill)
 - **Deps**: WP5, WP2, WP4. **Owns**: `src/features/keyfinder/`, `src/ui/ChordInput/`
@@ -100,7 +106,8 @@ jazz progressions, a key finder, and the visual Changes Trainer, which covers mo
 ### WP8: Voicing engine
 - **Deps**: WP1b. **Owns**: `src/theory/voicing.ts`, `src/content/voicings/`
 - **Accept**: drop 2 and drop 3 inversions correct for maj7, m7, 7, and m7b5 on all listed
-  string sets; the playability filter respects `maxStretch`; `voiceLead` on ii–V–I yields total
+  string sets; m7b5 shells include the b5; dominant rootless voicings use the 13; 6th-diminished
+  and "So What" shapes generated; the playability filter respects `maxStretch`; `voiceLead` on ii–V–I yields total
   motion ≤ 4 semitones for drop 2 on strings 4-3-2-1.
 
 ### WP9: Voicings and progressions library, songs (F6)
@@ -116,13 +123,15 @@ jazz progressions, a key finder, and the visual Changes Trainer, which covers mo
 
 ### WP11: Lick content
 - **Deps**: WP1d, WP1c. **Owns**: `src/content/licks/`
-- **Accept**: 60 original licks per SPEC §10.3; the content test checks that strong-beat notes
-  are never `avoid`; each lick has concepts, difficulty, and context.
+- **Accept**: 60 original 1–2 bar licks per SPEC §10.3; at least one enclosure lick per
+  context; the content test checks that strong-beat notes are never `avoid`; each lick has
+  concepts, difficulty, and context.
 
 ### WP12: Lick Library and Trainer (F7, steps 1, 4, 5 without the mic)
 - **Deps**: WP10, WP11, WP3. **Owns**: `src/features/licks/`, `src/ui/TabView/`
 - **Accept**: tab plus fretboard cursor in sync; 50–100% speed; A/B loop; transpose through 12
-  keys with re-fingering; "My Licks" entry by tapping notes.
+  keys with re-fingering; "Vary it" step (rhythm change, displacement, truncation); "My Licks"
+  entry by tapping notes.
 
 ### WP13: Pitch pipeline and Tuner
 - **Deps**: WP0. **Owns**: `src/pitch/`, `src/features/tuner/`, `src/ui/PitchMeter/`
@@ -132,9 +141,13 @@ jazz progressions, a key finder, and the visual Changes Trainer, which covers mo
 
 ### WP14: Mic-graded modes
 - **Deps**: WP13, WP7, WP12. **Owns**: `src/pitch/grader.ts`, graded sub-modes inside `features/changes` and `features/licks` (coordinate via a small `useGradedExercise` hook in `src/practice/`)
-- **Accept**: target-note game, guide-tone line, arpeggio mode, and lick play-along report
-  per-beat results; the post-loop timeline view is shown; grader unit tests cover timing
-  windows and tier scoring.
+- **Accept**: target-note game, guide-tone line, arpeggio (including upper-structure triads),
+  approach patterns, rhythm-first, and lick play-along report per-beat results. The post-loop
+  timeline view is shown, with rhythm and feel reported separately. Grader unit tests cover:
+  - timing windows, and anticipations up to an eighth note;
+  - tier scoring, including resolved avoid notes being neutral and blues blue notes scoring
+    as tensions;
+  - bends graded on their settled pitch.
 
 ### WP15: Fret Quiz (F3)
 - **Deps**: WP13, WP2. **Owns**: `src/features/fretquiz/`
@@ -143,13 +156,32 @@ jazz progressions, a key finder, and the visual Changes Trainer, which covers mo
 ### WP16: Storage, SRS, and tempo ladders
 - **Deps**: WP0. **Owns**: `src/storage/`, `src/practice/{srs,tempoLadder,scoring}.ts`
 - **Accept**: Dexie schema v1 with a migration test; export → wipe → import round-trips;
-  SM-2 unit tests; tempo-ladder rules from ARCHITECTURE §6.4; replaces the temporary song
-  adapter from WP9.
+  SM-2 unit tests, including fluency grading and one-item-per-lick key rotation; tempo-ladder
+  rules from ARCHITECTURE §6.4 (3 clean runs, 80% restart, variable-tempo runs, daily cap);
+  replaces the temporary song adapter from WP9.
 
-### WP17: Today planner, Technique, Progress, Ear (F1, F8, F9, F10)
-- **Deps**: WP16, WP14, WP15. **Owns**: `src/practice/planner.ts`, `src/features/{today,technique,progress,ear}/`
-- **Accept**: a 30-minute plan follows the weighting and pulls due items first; technique
-  drills with the tempo ladder and an evenness metric; progress charts; a basic ear drill.
+### WP17: Today planner, Technique, Progress (F1, F8, F10)
+- **Deps**: WP16, WP14, WP15. **Owns**: `src/practice/planner.ts`, `src/features/{today,technique,progress}/`
+- **Accept**:
+  - the 30-minute plan follows the weights in ARCHITECTURE §6.4: warm-up first, tune free-play
+    last, blocked practice then interleaved;
+  - health guardrails are on by default (break prompts, drill caps, a once-a-week limit on
+    raising max stretch, the ~15% weekly growth cap, and a pain report ending the session);
+  - technique drills use the tempo ladder and an evenness metric;
+  - progress charts.
+
+### WP18: Learning Path and Tune Study (F0, F4a)
+- **Deps**: WP16, WP14, WP1d. **Owns**: `src/content/curriculum/`, `src/features/{path,tunestudy}/`
+- **Accept**: the 8 units from FEATURES F0 with prerequisites and pass criteria; scale gating
+  (the altered, H-W dim and lydian dominant alternatives hidden until unit 7); the Tune Study
+  7-step flow works on every bundled tune; the planner only draws from unlocked units.
+
+### WP19: Ear, Singing and Transcription (F9)
+- **Deps**: WP13, WP4. **Owns**: `src/features/ear/`
+- **Accept**: cadence, chord-quality and function recognition drills (SRS); sung guide-tone
+  lines graded by the mic; sing-then-play call and response; transcribe mode that loads a
+  local audio file and plays it with loop, pitch-preserving slowdown and a pitch hint, with
+  nothing uploaded or stored.
 
 ---
 
