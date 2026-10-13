@@ -11,9 +11,12 @@ wants to:
 4. **Know the key**: analyze a chord progression, find the key(s), and know what to play.
 5. **Build a lick vocabulary**: a library of licks you can call up on demand, in any key.
 6. **Improve dexterity**: graded technique drills with tempo tracking.
+7. **Write songs**: turn chord knowledge into songwriting, including how to write a chorus or
+   bridge that contrasts with a verse but still belongs to the same song.
 
-The app listens through the phone's microphone to grade what you play, and generates its own
-backing tracks (bass, comping, drums) for any progression.
+The app can listen through the phone's microphone (optional, with no setup) to tell you where
+you missed the changes. It generates its own backing tracks (bass, comping, drums) for any
+progression.
 
 ## Status
 

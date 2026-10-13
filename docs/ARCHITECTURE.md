@@ -34,7 +34,8 @@ Known PWA caveats, with mitigations:
   that resumes the `AudioContext`.
 - iOS may evict storage for sites that aren't installed. Ask the user to install to the home
   screen, request `navigator.storage.persist()`, and offer JSON export/import of progress.
-- Mic latency varies by device. Run a latency calibration step and widen grading windows.
+- Mic latency varies by device. Calibrate passively from the first graded loops (no setup step)
+  and use tempo-relative grading windows.
 
 ## 3. Tech stack
 
@@ -68,7 +69,7 @@ Known PWA caveats, with mitigations:
 ├────────────────────────────────────────────────────────────────────────┤
 │ ui/         reusable presentational components                         │
 │   Fretboard · ChordDiagram · TabView · TransportBar · ChordChart ·     │
-│   NoteBadge · TempoControl · PitchMeter                                │
+│   NoteBadge · TempoControl · TunerNeedle · LoopSummary                 │
 ├──────────────┬──────────────┬───────────────┬───────────────┬──────────┤
 │ audio/       │ pitch/       │ practice/     │ storage/      │ content/ │
 │ engine,      │ mic, worklet,│ SRS, tempo    │ Dexie db +    │ JSON +   │
@@ -117,7 +118,8 @@ conflicts, and keep the theory engine fully unit-testable.
 │  │  ├─ analysis/
 │  │  │  ├─ key.ts        key detection + key-region segmentation
 │  │  │  ├─ roman.ts      roman-numeral & function labelling
-│  │  │  └─ chordScale.ts per-chord scale suggestions with note-tier colouring
+│  │  │  ├─ chordScale.ts per-chord scale suggestions with note-tier colouring
+│  │  │  └─ songwriting.ts section suggestions: contrast/unity/transition scoring (SPEC §11)
 │  │  ├─ transpose.ts
 │  │  └─ index.ts         public API (the ONLY import path for other layers)
 │  ├─ content/
@@ -127,6 +129,7 @@ conflicts, and keep the theory engine fully unit-testable.
 │  │  ├─ licks/*.json
 │  │  ├─ technique/*.json
 │  │  ├─ comping/*.json    rhythm patterns
+│  │  ├─ songwriting/*.json section templates by role/style + songwriting lessons
 │  │  └─ index.ts          typed loaders
 │  ├─ audio/
 │  │  ├─ engine.ts         AudioContext/Tone lifecycle, unlock, master bus
@@ -139,7 +142,8 @@ conflicts, and keep the theory engine fully unit-testable.
 │  │  ├─ mic.ts            permission, stream, input gain, noise gate
 │  │  ├─ detector.worklet.ts  AudioWorklet: MPM pitch + RMS onset
 │  │  ├─ noteTracker.ts    frames → stable DetectedNote events
-│  │  ├─ calibration.ts    latency + noise-floor calibration
+│  │  ├─ calibration.ts    passive latency + noise-floor estimation (no setup step)
+│  │  ├─ bleed.ts          ignore backing-track notes picked up from the phone speaker
 │  │  └─ grader.ts         compare DetectedNote stream to ExpectedNote targets
 │  ├─ practice/
 │  │  ├─ srs.ts            spaced-repetition scheduler (SM-2 variant)
@@ -213,10 +217,31 @@ interface Progression {
 
 interface Song {                // bundled tune chart (THEORY_SPEC §10.5) or user-entered chart
   id: string; title: string; key?: KeyCenter; tempo: number; style: Progression['style'];
-  form: { label: string; bars: { chords: { symbol: string; beats: number }[] }[] }[];  // A, B, ...
+  form: SongSection[];          // in play order; sections may repeat by id
   difficulty?: 1|2|3|4|5;
   melody?: LickNote[];          // only for public-domain tunes or user-entered melodies
   source: 'bundled'|'user';
+}
+
+interface SongSection {
+  id: string;
+  label: string;                // 'A', 'Verse 1', 'Chorus', ...
+  role: 'intro'|'verse'|'prechorus'|'chorus'|'bridge'|'A'|'B'|'solo'|'outro';
+  bars: { chords: { symbol: string; beats: number }[] }[];
+}
+
+type SongwritingTechnique =     // THEORY_SPEC §11.3
+  'newStartingChord'|'relativeFlip'|'parallelModeSwitch'|'harmonicRhythm'|'reorderChords'
+  |'pedalPoint'|'climbingBass'|'borrowedChords'|'newKeyArea'|'cycleOfDominants'
+  |'secondaryDominantLeadIn'|'cadenceSetup'|'liftModulation'|'jazzReharm'|'phraseLength';
+
+interface SectionSuggestion {
+  role: SongSection['role'];
+  bars: SongSection['bars'];
+  romans: string[];
+  techniques: SongwritingTechnique[];
+  scores: { unity: number; contrast: number; transitionIn: number; transitionOut: number; total: number };
+  explanation: string[];        // plain-English sentences, generated from technique templates
 }
 
 interface CurriculumUnit {      // FEATURES F0: ordered learning path with mastery gates
@@ -260,7 +285,7 @@ interface VoicingShape {
 
 interface TechniqueDrill {
   id: string; name: string;
-  category: 'warmup'|'minimumPressure'|'chromatic'|'spider'|'legato'|'alternatePicking'|'economyPicking'|'stringSkipping'|'stretch'|'arpeggio'|'approach'|'bending'|'vibrato';
+  category: 'warmup'|'minimumPressure'|'chromatic'|'spider'|'legato'|'alternatePicking'|'economyPicking'|'stringSkipping'|'stretch'|'arpeggio'|'approach';
   pattern: FretPos[] | { generator: string; params: Record<string, number> };
   subdivision: 1|2|3|4|6;       // notes per beat
   startBpm: number; goalBpm: number;
@@ -275,6 +300,7 @@ interface Settings {
   tuning: Tuning; leftHanded: boolean; fretboardOrientation: 'horizontal'|'vertical';
   maxStretchFrets: 3|4|5|6;     // dexterity-aware fingering
   noteNames: 'sharps'|'flats'|'auto'; showDegreesInsteadOfNames: boolean;
+  micEnabled: boolean;          // remembered one-tap toggle; every exercise works without it
   micLatencyMs: number; micNoiseGateDb: number; dailyGoalMin: number;
   gentleMode: boolean;          // default true: rest prompts, drill caps (§6.4)
   maxStretchRaisedAt?: string;  // ISO date; maxStretch may rise at most one step per week
@@ -310,6 +336,9 @@ notesOnFretboard(notes: Note[] | PitchClass[], tuning: Tuning, fretRange?: [numb
 positions(scale: ScaleId, root: Note, system: 'position'|'caged'|'3nps'|'singleString', maxStretch: number): FretPos[][]
 generateVoicings(c: ChordSymbol, family: VoicingShape['family'], tuning: Tuning): Voicing[]
 voiceLead(prog: ChordSymbol[], family, opts): Voicing[]             // smoothest path
+suggestSection(song: Song, from: string, role: SongSection['role'], opts: { style; bars; adventurousness: 1|2|3; seed }): SectionSuggestion[]
+explainTransition(a: SongSection, b: SongSection, key: KeyCenter): string[]
+chordsThatFit(section: SongSection, barIndex: number, key: KeyCenter): { chord: ChordSymbol; why: string }[]
 fingerLine(notes: Midi[], opts: { tuning; maxStretch; preferredPosition? }): FretPos[]
 transpose(x, semitones)
 ```
@@ -348,9 +377,48 @@ mic stream ─► AudioWorklet (2048-sample window, hop 256 @ 48 kHz)
                └─ McLeod Pitch Method → (freqHz, clarity)
            ─► noteTracker: median-filter frames, require ≥ 3 stable frames (~16 ms) and
                            clarity ≥ 0.9, fold to MIDI, emit DetectedNote{midi, cents, tOn, tOff}
+           ─► bleed filter: drop detections that match a note the backing track is sounding
+                      at that moment and have no guitar-like onset
            ─► grader: match DetectedNote to ExpectedNote[] within
-                      timing window (default ±120 ms, minus calibrated latency) and pitch rule
+                      timing window (default ±120 ms, minus estimated latency) and pitch rule
 ```
+
+#### Mic UX principles: helpful, not clunky
+
+The microphone is there to answer questions you can't easily answer yourself while playing. It
+must never become a chore. These rules are acceptance criteria for every mic feature:
+
+1. **Optional everywhere.** Every exercise works with the mic off: you self-rate ("clean /
+   almost / sloppy") or just play. The mic toggle is one tap and the setting is remembered.
+2. **Only where it earns its place.** Use the mic only for questions that are hard to judge by
+   ear in the moment (see the table in FEATURES, "Where the mic is used"). There is **no
+   grading of bends, vibrato or tone**: your ear does that better, and those trainers are
+   dropped.
+3. **Zero setup.** No calibration screen before you can play. Latency starts from a per-device
+   default and is refined passively: during the first graded loops, detected onsets are lined up
+   with the beats you were aiming for and the median offset is stored. Manual calibration lives
+   in Settings for anyone who wants it.
+4. **Don't interrupt the music.** While you play, show at most one big glanceable signal (the
+   current chord box flashes when you land a chord tone on the change). There are no scores,
+   pop-ups or sounds mid-loop, and the loop keeps going between repetitions, so there's no
+   tapping between attempts.
+5. **Feedback that tells you what to do.** After a loop (or when you tap stop), show one
+   sentence plus the timeline, and make it actionable. For example: "You landed 9 of 12 changes.
+   In bar 10 you held F over C7; F is the 7th of Gm7, so move it down a half step to E, the 3rd
+   of C7." Not just a percentage.
+6. **Honest about uncertainty.** If detection confidence is low (noise, strummed chords, speaker
+   bleed), mark that beat "couldn't hear clearly" and leave it out of the score. Never mark you
+   wrong when the app isn't sure. Target: under 2% of correctly played notes marked wrong on the
+   recorded test fixtures.
+7. **Speaker bleed handled.** The backing track coming out of the phone speaker gets into the
+   mic. Headphones are suggested once (not nagged). Without headphones, the bleed filter
+   ignores detections matching the notes the backing is playing that have no guitar-like onset.
+   Request the mic with `echoCancellation`, `noiseSuppression` and `autoGainControl` all
+   **off**; those voice-call filters destroy musical pitch.
+8. **Hands stay on the guitar.** Graded loops start with a count-in, or optionally on your first
+   played note ("play to start"). Results accumulate across repetitions automatically.
+9. **Works with what you have**: an acoustic guitar, or an electric through an amp, with the
+   phone within about 1 m.
 
 - **Matching rules** depend on the exercise: exact MIDI note (lick playback, fret quiz), any
   octave of a pitch class (find-the-note), any member of a set (land on a chord tone), or a
@@ -367,13 +435,14 @@ mic stream ─► AudioWorklet (2048-sample window, hop 256 @ 48 kHz)
 - **Anticipation.** A target note landing up to an **eighth note before** the downbeat of a new
   chord counts as landing on the new chord. Swing players anticipate the change on the "and" of 4.
   This window scales with tempo, unlike the fixed ±120 ms window.
-- **Bends** are graded on their settled target pitch, not on the onset pitch.
+- **Bends inside licks** are matched on the pitch they settle at, so a correct bend is never
+  marked as a wrong note. Bends are not graded on their own.
 - **Rhythm and time feel** are reported separately from note choice: timing deviation per note,
   measured swing ratio, and ahead/behind tendency. Scores are weighted by metric position and
   duration.
-- **Calibration.** On first use, play a click through the speaker while the user strums a muted
-  string on it 8 times. The median offset becomes `micLatencyMs`. A 3-second room-noise sample
-  sets the noise gate.
+- **Calibration** is passive (principle 3). The noise gate adapts from the quiet moments
+  between phrases. An optional manual calibration in Settings plays clicks while you strum a
+  muted string 8 times and stores the median offset.
 - **Limits.** Monophonic only; chords are not graded in v1. Pitch detection runs in the
   worklet thread so the UI stays at 60 fps.
 - The **tuner** feature reuses this pipeline and is a good first end-to-end test of it.

@@ -1,11 +1,31 @@
 # Features and Screens
 
-The app has a bottom tab bar: **Today · Fretboard · Changes · Licks · Library · More**.
+The app has a bottom tab bar: **Today · Fretboard · Changes · Licks · Songs · More**. The Songs
+tab holds the progression and voicing library, tunes, your own songs, and the Songwriting Lab.
 Every practice screen shares the same `<TransportBar>` (play, tempo, loop, key, mix) at the
 bottom so the controls are reachable with one thumb.
 
-Each feature below lists the goal it serves (G1–G6 from the README), what it does, and its
+Each feature below lists the goal it serves (G1–G7 from the README), what it does, and its
 MVP scope.
+
+## Where the mic is used
+
+The mic is optional everywhere and follows the UX principles in ARCHITECTURE §6.3: zero setup,
+nothing interrupts the music, and feedback says what to change. It is used only where it answers
+a question that is hard to judge by ear while playing:
+
+| Where | The question it answers |
+| --- | --- |
+| Changes Trainer: target-note game, guide-tone line, arpeggios, approach patterns | "Did I actually land on the chord tones when the chord changed, and where did I miss?" |
+| Changes Trainer: rhythm first | "Am I rushing or dragging, and am I really starting phrases off the beat?" |
+| Fret Quiz: find it | "Which notes on the neck am I slow or wrong on?" |
+| Lick Trainer: play along and 12 keys | "Did I play it right in the new key?" |
+| Technique tempo ladder (optional) | "Was that run clean enough to speed up?" (with the mic off, you self-rate) |
+| Ear: sing it (optional) | "Was I singing the right note?" |
+| Tuner | Tuning |
+
+There is no mic grading of bends, vibrato or tone. Your ear judges those better, so those
+trainers were dropped.
 
 ---
 
@@ -170,8 +190,9 @@ Each step is graded and unlocks the next.
 
 - Drill cards (THEORY_SPEC §10.4) with a big metronome, the pattern on the fretboard or tab,
   and finger numbers.
-- **Tempo ladder**: the mic checks note accuracy and evenness (timing deviation in ms). Tempo
-  goes up only after clean runs. A graph shows the best clean BPM over time for each drill.
+- **Tempo ladder**: tempo goes up only after clean runs. With the mic on, the app judges
+  "clean" (note accuracy and timing evenness). With the mic off, you tap clean / almost /
+  sloppy. A graph shows the best clean BPM over time for each drill.
 - **Weak-finger focus**: drills that favor fingers 3 and 4.
 - **Gentle mode (on by default)**:
   - shorter sets, rest timers, and a 2–5 min break prompt every 20–25 min;
@@ -181,8 +202,6 @@ Each step is graded and unlocks the next.
   - max stretch increases at most one step per week.
 - **Warm-up and minimum-pressure drills** always come first: press until the note just sounds,
   then relax.
-- **Bend and vibrato trainer**: a live pitch meter shows the bend target and the vibrato
-  oscillation.
 
 ## F9. Ear, Singing and Transcription (G2, G4)
 
@@ -210,3 +229,39 @@ in Jazz*), so this is a full feature.
 - Chromatic tuner (reuses the pitch pipeline).
 - Settings: tuning, left-handed, fretboard orientation, note names vs degrees, sharps/flats,
   max stretch, mic calibration, daily goal, and theme.
+
+## F12. Songwriting Lab (G7)
+
+Write songs with the same harmony knowledge the rest of the app teaches, and learn **how to
+write a new section** (verse → pre-chorus → chorus → bridge) that is different from the first
+one but still belongs to the same song. The rules are in THEORY_SPEC §11.
+
+- **Sketch a song.** Add sections (Verse, Pre-chorus, Chorus, Bridge, or A/B) and type or tap in
+  chords for the first one. The app shows the key and roman numerals as you go (reusing the Key
+  Finder analysis).
+- **"Suggest a chorus / pre-chorus / bridge".** Get up to 5 options for the next section. Each
+  shows:
+  - the chords (in your key) and the techniques used, such as "starts on IV", "relative-minor
+    flip", "climbing bass" or "borrowed bVII";
+  - 2–4 plain-English sentences on **why it works**: what stays the same (unity), what changes
+    (contrast), and how it connects to the sections around it;
+  - an **adventurousness** slider: 1 = stays in the key; 2 = adds borrowed chords and secondary
+    dominants; 3 = new key areas, modulation and jazz reharmonization.
+- **Audition.** Tap a suggestion to hear it in context: the backing track loops verse →
+  suggestion → verse in your chosen style, so you judge it with your ears.
+- **Edit one chord at a time.** Tap a bar to see "chords that fit here", ranked, each with a
+  one-line reason.
+- **Check the joins.** "Explain this transition" describes how one section hands off to the next
+  and suggests a fix if the join is weak. For example: "Add D7 at the end of the verse to lead
+  into the G chorus." It also flags sections that are too similar: "your chorus uses the same
+  chords as the verse starting on the same chord; try starting on IV or changing how often the
+  chords change."
+- **Melody hints.** For each section: put chord tones on strong beats, let the chorus sit higher
+  with longer notes, and use the new section's chords to pick fresh target notes. These are the
+  same skills as the Changes Trainer.
+- **Lessons.** Eight short lessons (THEORY_SPEC §11.7), ending with a study of how real tunes
+  from the tune list build their bridges.
+- **Connected to everything.** A sketch is saved as a song, so you can solo over your own song in
+  the Changes Trainer, analyze it in the Key Finder, and practice it in Tune Study.
+
+The mic is not used here.

@@ -17,10 +17,12 @@ Phase 6  Mic                     ► WP13 (pitch pipeline + tuner) ─► WP14 (
 Phase 7  Practice system         ► WP16 (storage+SRS+tempo) ─► WP17 (Today planner, Technique, Progress)
                                                               ─► WP18 (Learning Path + Tune Study)
                                  ► WP19 (Ear, singing, transcription; after WP13)
+Phase 8  Songwriting             ► WP20 (section engine, after WP5) ─► WP21 (Songwriting Lab UI + lessons)
 ```
 
 **Parallel tracks.** Once WP1a's public API types are merged, WP2, WP3, WP5, WP8, and WP10 can
-run at the same time. WP13 (mic) depends only on WP0 and can start early as well.
+run at the same time. WP13 (mic) depends only on WP0 and can start early as well. WP20
+(songwriting engine) can start as soon as WP5 is merged.
 
 **First usable milestone (M1)**: WP0–WP7. This gives a fretboard explorer, backing tracks for
 jazz progressions, a key finder, and the visual Changes Trainer, which covers most of the
@@ -134,10 +136,17 @@ jazz progressions, a key finder, and the visual Changes Trainer, which covers mo
   entry by tapping notes.
 
 ### WP13: Pitch pipeline and Tuner
-- **Deps**: WP0. **Owns**: `src/pitch/`, `src/features/tuner/`, `src/ui/PitchMeter/`
-- **Accept**: offline tests on recorded guitar WAV fixtures (single notes E2–E6) detect the
-  correct MIDI note ≥ 98% of the time within 50 ms of onset; tuner accurate to ±3 cents on
-  synthetic sines; calibration flow stores latency; no audio leaves the device.
+- **Deps**: WP0. **Owns**: `src/pitch/`, `src/features/tuner/`, `src/ui/TunerNeedle/`
+- **Accept**:
+  - offline tests on recorded guitar WAV fixtures (single notes E2–E6, acoustic and amplified
+    electric) detect the correct MIDI note ≥ 98% of the time within 50 ms of onset;
+  - the tuner is accurate to ±3 cents on synthetic sines;
+  - the mic is requested with echo cancellation, noise suppression and auto gain **off**;
+  - **no setup screen**: latency is estimated passively, and manual calibration is optional in
+    Settings;
+  - the bleed filter test: on fixtures with the backing track mixed in at speaker level, fewer
+    than 2% of detections are backing notes misreported as guitar;
+  - no audio leaves the device.
 
 ### WP14: Mic-graded modes
 - **Deps**: WP13, WP7, WP12. **Owns**: `src/pitch/grader.ts`, graded sub-modes inside `features/changes` and `features/licks` (coordinate via a small `useGradedExercise` hook in `src/practice/`)
@@ -147,7 +156,15 @@ jazz progressions, a key finder, and the visual Changes Trainer, which covers mo
   - timing windows, and anticipations up to an eighth note;
   - tier scoring, including resolved avoid notes being neutral and blues blue notes scoring
     as tensions;
-  - bends graded on their settled pitch.
+  - bends inside licks matched on their settled pitch (no standalone bend grading);
+  - low-confidence beats marked "couldn't hear clearly" and left out of the score; fewer than
+    2% of correctly played fixture notes marked wrong.
+- **UX acceptance** (ARCHITECTURE §6.3 principles):
+  - every graded mode also works with the mic off;
+  - nothing pops up mid-loop;
+  - loops continue without taps between attempts;
+  - the after-loop summary names the bar, what was played, and what to play instead;
+  - a Playwright test runs a graded loop end-to-end with a fake audio input.
 
 ### WP15: Fret Quiz (F3)
 - **Deps**: WP13, WP2. **Owns**: `src/features/fretquiz/`
@@ -167,7 +184,8 @@ jazz progressions, a key finder, and the visual Changes Trainer, which covers mo
     last, blocked practice then interleaved;
   - health guardrails are on by default (break prompts, drill caps, a once-a-week limit on
     raising max stretch, the ~15% weekly growth cap, and a pain report ending the session);
-  - technique drills use the tempo ladder and an evenness metric;
+  - technique drills use the tempo ladder (mic-judged when the mic is on, self-rated when it is
+    off);
   - progress charts.
 
 ### WP18: Learning Path and Tune Study (F0, F4a)
@@ -182,6 +200,26 @@ jazz progressions, a key finder, and the visual Changes Trainer, which covers mo
   lines graded by the mic; sing-then-play call and response; transcribe mode that loads a
   local audio file and plays it with loop, pitch-preserving slowdown and a pitch hint, with
   nothing uploaded or stored.
+
+### WP20: Songwriting engine
+- **Deps**: WP5. **Owns**: `src/theory/analysis/songwriting.ts`, `src/content/songwriting/` (templates)
+- **Tasks**: the technique generators and explanation templates (SPEC §11.3), `suggestSection`
+  with scoring and role weights (§11.4), `explainTransition`, and `chordsThatFit` (§11.5).
+- **Accept**: every golden example in SPEC §11.6 passes; output is deterministic for a given
+  seed; no suggestion is identical to its source section; every suggestion has 2–4 explanation
+  sentences that name real chords in the user's key; runs in under 30 ms.
+
+### WP21: Songwriting Lab (F12)
+- **Deps**: WP20, WP4, WP9, WP16. **Owns**: `src/features/songwriting/`, `src/content/songwriting/lessons/`
+- **Accept**:
+  - sketch sections and enter chords with live key and roman numerals;
+  - "Suggest a chorus / pre-chorus / bridge" shows 5 options with their techniques and
+    explanations;
+  - the audition loop plays the previous section → the suggestion → the return;
+  - the per-bar "chords that fit" picker and "Explain this transition" work;
+  - the adventurousness slider changes the suggestions;
+  - the 8 lessons are in place;
+  - sketches save as songs and open in the Changes Trainer and Key Finder.
 
 ---
 

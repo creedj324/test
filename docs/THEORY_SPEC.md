@@ -378,6 +378,141 @@ Chromatic 1-2-3-4 permutations and spider exercises are useful but unmusical and
 so they are **capped at about 3 minutes per session**. Musical drills in the current key are
 preferred: arpeggios and scales through the day's progression. Also: one-finger-per-fret with a
 `maxStretch` variant, legato trills (1-2, 1-3, 2-4, 3-4: weak-finger focus), alternate-picking
-scale sequences (3s, 4s, 6ths), string skipping, arpeggio sweeps (3-string triads), bending to
-pitch (graded by the tuner pipeline), and vibrato width/speed. Each drill has `startBpm` /
+scale sequences (3s, 4s, 6ths), string skipping, and arpeggio sweeps (3-string triads). Each drill has `startBpm` /
 `goalBpm` and is driven by the tempo ladder.
+
+## 11. Songwriting: writing a new section that belongs
+
+Goal: given one section of a song (say a verse), help write the next one (a pre-chorus, chorus
+or bridge) so it sounds **different but related**. Everything here is rule-based and
+deterministic (`analysis/songwriting.ts`). The same rules power the explanations the user reads,
+so the app teaches *why* a section works, not just *what* to play.
+
+### 11.1 Song forms
+
+| Form | Shape | Where the contrast lives |
+| --- | --- | --- |
+| Verse–chorus | V C V C | Chorus is the payoff: it often starts on a new chord and lands on I |
+| Verse–pre-chorus–chorus–bridge | V P C V P C B C | Pre-chorus builds tension; bridge is the biggest departure, once |
+| AABA (32-bar standard) | A A B A, 8 bars each | B (the bridge) moves to a new key area, then sets up the return to A |
+| ABAC (32-bar standard) | A B A C | B and C start like A, then end differently |
+| 12-bar blues | AAB phrase inside one chorus | The change of chord at bar 5 and the turnaround do the work |
+
+### 11.2 The three questions every new section answers
+
+1. **Unity: does it sound like the same song?** It keeps the same tonal center (or a closely
+   related one), shares some chords or a bass/rhythm motif, and stays in the same style.
+2. **Contrast: does it sound like a new place?** It changes at least one of: the starting chord,
+   the chord vocabulary, the harmonic rhythm (how often chords change), the key area, the
+   register or energy of the melody, or the phrase length.
+3. **Transitions: do the joins work?** The last chord of the previous section should lead into
+   the first chord of the new one (by a cadence, a common tone, or a stepwise bass line), and
+   the new section's end should lead to whatever comes next.
+
+Rule of thumb: a **chorus** is high unity and medium contrast, with a strong arrival. A
+**pre-chorus** builds tension toward the chorus. A **bridge** is the biggest contrast in the
+song and must find its way back.
+
+### 11.3 Technique catalogue
+
+Each technique is a generator (it produces candidate chords) and an explanation template.
+Examples are in C major; the app shows them in the user's key.
+
+| Id | Technique | Example | Typical role |
+| --- | --- | --- | --- |
+| `newStartingChord` | Start on a chord the previous section avoided or only passed through, often IV or vi | Verse `C G Am F` → chorus `F G C Am` | chorus |
+| `relativeFlip` | Move the center of gravity between the relative minor and major | Verse `Am Em F G` (minor feel) → chorus `C G F C` | chorus |
+| `parallelModeSwitch` | Same root, switch major ↔ minor | Verse in C minor → chorus in C major | chorus, bridge |
+| `harmonicRhythm` | Change how often chords change: a busy verse and a broad chorus (or the reverse) | Verse 2 chords per bar → chorus 1 chord per 2 bars | any |
+| `reorderChords` | Same chords, new order or new bass, so it's familiar yet fresh | Verse `C Am F G` → chorus `F C G Am` | chorus |
+| `pedalPoint` | Hold one bass note (often 5) under changing chords to build tension | `F/G Dm/G C/G G` | prechorus |
+| `climbingBass` | Step the bass upward into the chorus | `Dm Em F G` | prechorus |
+| `borrowedChords` | Borrow iv, bVI, bVII or bIII from the parallel minor for color | `F Fm C` or `Ab Bb C` | bridge, chorus |
+| `newKeyArea` | Center the bridge on IV, vi or iii, then return via V7 | Bridge `F Dm7 G7` or `Am E7 Am G7` | bridge |
+| `cycleOfDominants` | Chain dominants around the cycle of 5ths back home | Rhythm-changes bridge `E7 A7 D7 G7` | bridge |
+| `secondaryDominantLeadIn` | Put the new section's first chord's own V7 at the end of the previous section | Verse ends `E7` → chorus starts `Am` | transition |
+| `cadenceSetup` | End the verse/pre-chorus on V (a half cadence) so the chorus feels like an arrival; use V → vi (deceptive) to extend; end the bridge on V or V7sus to set up the return | Pre-chorus ends `G` → chorus starts `C` | transition |
+| `liftModulation` | Final chorus up a half or whole step, prepared by the new key's V7 | `G7` → chorus in C, then `A7` → last chorus in D | final chorus |
+| `jazzReharm` | Same melody, new chords: insert ii–Vs, tritone subs, passing diminished chords | `C Am Dm G` → `C A7 Dm7 Db7` | last A, variation |
+| `phraseLength` | Change section length or phrase grouping (4 vs 8 bars, an extra 2-bar tag) | 8-bar verse, 4-bar pre-chorus | any |
+
+Melody advice (shown with every suggestion, not generated): chorus melodies usually sit higher
+and use longer notes on chord tones; put chord tones on strong beats and use the section's new
+chords to pick fresh target notes. This ties directly into the Changes Trainer's target-note
+skills.
+
+### 11.4 `suggestSection` algorithm
+
+1. **Analyze the source** with §5: key, romans, harmonic rhythm, first and last chord function,
+   root-motion profile, and the chord set used.
+2. **Generate candidates.** Apply each technique allowed for the requested role. Add role and
+   style templates from `content/songwriting` (pop, rock, blues, jazz). Respect `bars` (default:
+   same length as the source) and `adventurousness`: 1 = diatonic only; 2 = plus borrowed chords
+   and secondary dominants; 3 = plus new key areas, modulation and jazz reharm.
+3. **Score each candidate** (0–1 each):
+   - **Unity**: share of chords diatonic or explainable in the song key (§5.2 emission rules),
+     plus partial credit for sharing 1–3 chords with the source. Being identical to the source
+     scores 0.
+   - **Contrast**:
+     - a different first-chord function: +0.35;
+     - a different harmonic rhythm: +0.2;
+     - a chord-set difference (Jaccard distance): up to +0.25;
+     - a new key area or borrowed chords: +0.2.
+   - **Transition in**: cadence strength from the source's last chord to the candidate's first
+     (V→I 1.0, V→vi 0.8, IV→I 0.6, common-tone or stepwise bass 0.5, otherwise 0.2), averaged
+     with voice-leading smoothness between the two chords.
+   - **Transition out**: the same, from the candidate's last chord to the next section's first
+     chord (for a bridge: back to the A/verse/chorus start).
+4. **Role weights** for `total`:
+
+   | Role | Unity | Contrast | Transition in | Transition out |
+   | --- | --- | --- | --- | --- |
+   | chorus | 0.35 | 0.25 | 0.3 | 0.1 |
+   | prechorus | 0.35 | 0.15 | 0.15 | 0.35 (must lead into the chorus) |
+   | bridge | 0.2 | 0.4 | 0.1 | 0.3 (must find its way back) |
+   | verse / A | 0.45 | 0.15 | 0.2 | 0.2 |
+
+5. Return the **top 5**, deduplicated (no two candidates with the same chords), each with its
+   techniques and 2–4 explanation sentences. For example: *"This chorus starts on F (IV), a
+   chord your verse only passed through, so it feels like arriving somewhere new. Your verse
+   ends on G (V), which pulls strongly to C; here it lands on F instead, which surprises the
+   ear. The chorus ends on G so it can lead straight back into the verse."*
+6. **Deterministic**: the same input and seed always give the same output, so tests can pin
+   results.
+
+### 11.5 Supporting functions
+
+- `explainTransition(a, b, key)`: describes how one section hands off to the next (cadence type,
+  common tones, bass motion) and suggests a fix if the join is weak. For example: "Add D7 at the
+  end of the verse to lead into the G chorus."
+- `chordsThatFit(section, bar, key)`: ranked replacement chords for one bar (diatonic choices,
+  substitutes sharing 2+ notes, secondary dominants of the next chord, borrowed chords), each
+  with a one-line reason.
+
+### 11.6 Golden examples (required tests)
+
+| Input | Expected among the top 5 |
+| --- | --- |
+| Verse `C G Am F` (2 bars each), role chorus, adv. 1 | A candidate starting on F or Am (`newStartingChord`); no candidate identical to the verse |
+| Verse `Am F C G`, role chorus | A `relativeFlip` candidate centered on C |
+| Verse `C Am F G`, role prechorus | A candidate ending on G (`cadenceSetup`), e.g. `Dm Em F G` (`climbingBass`) |
+| Verse `C F C G`, role bridge, adv. 3 | A `newKeyArea` (F or Am) or `cycleOfDominants` candidate whose last chord is G or G7 |
+| AABA in B♭ with A = rhythm-changes A | Bridge `D7 G7 C7 F7` ranks first or second |
+| Verse `C G Am F` → chorus `C G Am F` (user-entered) | `explainTransition` flags "no contrast: same chords and same starting chord" and suggests `newStartingChord` or `harmonicRhythm` |
+
+### 11.7 Lessons (`content/songwriting`)
+
+Eight short lessons. Each has an explanation, audio examples, and a "try it" step that opens the
+Songwriting Lab preloaded:
+
+1. Sections and form: verse, chorus, pre-chorus, bridge, AABA.
+2. Unity and contrast: the three questions.
+3. Start somewhere new: IV and vi chorus openings.
+4. Harmonic rhythm: busy versus broad.
+5. Building tension: pre-chorus pedal points and climbing bass lines.
+6. Cadences and transitions: half, authentic and deceptive cadences, secondary-dominant
+   lead-ins.
+7. Bridges: new key areas, borrowed chords, the cycle of dominants, and finding the way home.
+8. Real-song study. Compare the A and B sections of the bundled tunes (§10.5): the cycle of
+   dominants in the I Got Rhythm bridge, the key shift in Blue Bossa, the Lady Bird backdoor
+   cadence, and the cycle of dominants that drives Sweet Georgia Brown.
