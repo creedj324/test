@@ -138,14 +138,21 @@ jazz progressions, a key finder, and the visual Changes Trainer, which covers mo
 ### WP13: Pitch pipeline and Tuner
 - **Deps**: WP0. **Owns**: `src/pitch/`, `src/features/tuner/`, `src/ui/TunerNeedle/`
 - **Accept**:
-  - offline tests on recorded guitar WAV fixtures (single notes E2–E6, acoustic and amplified
-    electric) detect the correct MIDI note ≥ 98% of the time within 50 ms of onset;
+  - fixtures are real phone recordings (one iPhone, one mid-range Android) at 0.5–1 m in a
+    normal room, acoustic and amplified electric, single notes E2–E6 plus legato and arpeggio
+    phrases. Bleed fixtures are played through the phone speaker and re-recorded, not mixed
+    digitally;
+  - `tOn` comes from the onset detector (±10 ms). The pitch label is ready within 80 ms below A2
+    and within 60 ms above it. Correct MIDI ≥ 98% on clean fixtures and ≥ 95% on room fixtures;
   - the tuner is accurate to ±3 cents on synthetic sines;
-  - the mic is requested with echo cancellation, noise suppression and auto gain **off**;
+  - the mic is requested with echo cancellation, noise suppression and auto gain off; the
+    settings actually applied are logged; the sample rate is read rather than assumed; the
+    non-silent channel is used; `audioSession` is set to play-and-record where supported; a
+    Screen Wake Lock is held during loops;
   - **no setup screen**: latency is estimated passively, and manual calibration is optional in
     Settings;
-  - the bleed filter test: on fixtures with the backing track mixed in at speaker level, fewer
-    than 2% of detections are backing notes misreported as guitar;
+  - the bleed filter test: on speaker-bleed fixtures with the mic-friendly mix, fewer than 2% of
+    detections are backing notes misreported as guitar;
   - no audio leaves the device.
 
 ### WP14: Mic-graded modes
@@ -158,9 +165,14 @@ jazz progressions, a key finder, and the visual Changes Trainer, which covers mo
     as tensions;
   - bends inside licks matched on their settled pitch (no standalone bend grading);
   - low-confidence beats marked "couldn't hear clearly" and left out of the score; fewer than
-    2% of correctly played fixture notes marked wrong.
+    2% of correctly played fixture notes marked wrong;
+  - **coverage floor**, so "unclear" can't be used to game the error rate: ≥ 90% of correctly
+    played notes graded (not unclear) on clean fixtures, and ≥ 75% with speaker backing;
+  - legato onsets, ring-over, octave-error and rhythm-threshold rules from ARCHITECTURE §6.3.
 - **UX acceptance** (ARCHITECTURE §6.3 principles):
   - every graded mode also works with the mic off;
+  - graded loops default to the mic-friendly mix (drums and bass, comping muted);
+  - the "one fix after the loop" hint appears when more than 30% of a loop was unclear;
   - nothing pops up mid-loop;
   - loops continue without taps between attempts;
   - the after-loop summary names the bar, what was played, and what to play instead;
@@ -203,8 +215,9 @@ jazz progressions, a key finder, and the visual Changes Trainer, which covers mo
 
 ### WP20: Songwriting engine
 - **Deps**: WP5. **Owns**: `src/theory/analysis/songwriting.ts`, `src/content/songwriting/` (templates)
-- **Tasks**: the technique generators and explanation templates (SPEC §11.3), `suggestSection`
-  with scoring and role weights (§11.4), `explainTransition`, and `chordsThatFit` (§11.5).
+- **Tasks**: the technique generators (major and minor key) and explanation templates (SPEC
+  §11.3), `suggestSection` with scoring, role weights and the playability tie-break (§11.4), and
+  `explainTransition`, `compareSections` and `chordsThatFit` (§11.5).
 - **Accept**: every golden example in SPEC §11.6 passes; output is deterministic for a given
   seed; no suggestion is identical to its source section; every suggestion has 2–4 explanation
   sentences that name real chords in the user's key; runs in under 30 ms.
@@ -215,7 +228,8 @@ jazz progressions, a key finder, and the visual Changes Trainer, which covers mo
   - sketch sections and enter chords with live key and roman numerals;
   - "Suggest a chorus / pre-chorus / bridge" shows 5 options with their techniques and
     explanations;
-  - the audition loop plays the previous section → the suggestion → the return;
+  - the audition loop plays the previous section → the suggestion → the return, switching the
+    backing style by each section's energy (low: palm-muted or half-time; high: full);
   - the per-bar "chords that fit" picker and "Explain this transition" work;
   - the adventurousness slider changes the suggestions;
   - the 8 lessons are in place;

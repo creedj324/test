@@ -248,17 +248,23 @@ one but still belongs to the same song. The rules are in THEORY_SPEC §11.
   - an **adventurousness** slider: 1 = stays in the key; 2 = adds borrowed chords and secondary
     dominants; 3 = new key areas, modulation and jazz reharmonization.
 - **Audition.** Tap a suggestion to hear it in context: the backing track loops verse →
-  suggestion → verse in your chosen style, so you judge it with your ears.
+  suggestion → verse in your chosen style, so you judge it with your ears. Mark each section's
+  **energy** (low or high) and the backing changes with it: palm-muted or half-time for a verse,
+  full strumming and drums for a chorus.
 - **Edit one chord at a time.** Tap a bar to see "chords that fit here", ranked, each with a
   one-line reason.
 - **Check the joins.** "Explain this transition" describes how one section hands off to the next
   and suggests a fix if the join is weak. For example: "Add D7 at the end of the verse to lead
-  into the G chorus." It also flags sections that are too similar: "your chorus uses the same
+  into the G chorus." It also flags sections that are too similar (`compareSections`): "your chorus uses the same
   chords as the verse starting on the same chord; try starting on IV or changing how often the
   chords change."
-- **Melody hints.** For each section: put chord tones on strong beats, let the chorus sit higher
-  with longer notes, and use the new section's chords to pick fresh target notes. These are the
-  same skills as the Changes Trainer.
+- **Melody and energy hints** (text only; the app doesn't write melodies or lyrics):
+  - give the chorus a higher peak note than the verse;
+  - contrast busy and held rhythms;
+  - put chord tones on strong beats;
+  - play lower, muted voicings in the verse and higher, open ones in the chorus.
+
+  These connect to the Changes Trainer's target-note skills.
 - **Lessons.** Eight short lessons (THEORY_SPEC §11.7), ending with a study of how real tunes
   from the tune list build their bridges.
 - **Connected to everything.** A sketch is saved as a song, so you can solo over your own song in

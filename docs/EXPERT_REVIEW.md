@@ -91,3 +91,49 @@ examples, and E minor pentatonic over Cmaj7.
 - Blues blue notes score as tensions.
 - Bends are graded on the pitch they settle at.
 - Rhythm and time feel are reported separately from note choice.
+
+## Round 2: songwriting and mic UX
+
+After the user's feedback (make the mic helpful rather than clunky, drop the bend trainer, add
+songwriting), a second panel reviewed THEORY_SPEC §11, FEATURES F12, ARCHITECTURE §6.3 and
+WP13/14/20/21. The panel was a songwriting teacher, a pop/jazz harmony theorist, and a
+music-tech UX expert.
+
+### Songwriting fixes
+
+- Form table corrected:
+  - ABAC: B ends away from home and C ends it home.
+  - AABA: the bridge often goes to IV or a chain of dominants.
+  - Blues: AAB is the lyric form, not the harmony.
+- Examples fixed:
+  - `newKeyArea` now actually tonicizes IV or vi.
+  - The `newStartingChord` verse no longer contains F.
+  - Lesson 8's real-song references are corrected. In Sweet Georgia Brown the cycle of
+    dominants is the A section. Lady Bird and Blue Bossa have no bridge.
+- Added the `tonicArrival` technique (verse withholds I, chorus arrives on it), minor-key
+  versions of every technique, rock idioms, and section energy for the audition.
+- Melody and prosody hints are text only. Melody and lyric generation are explicitly out of
+  scope.
+- Scoring fixes:
+  - first-chord contrast compares roman degrees;
+  - chromatic dominants count as contrast;
+  - the cadence table now covers V7/x → x, V → IV and same-chord joins;
+  - unity and voice-leading smoothness are defined;
+  - golden tests specify adventurousness and length, and new golden tests were added.
+- `compareSections` added to flag sections that are too similar.
+
+### Mic fixes
+
+- **Bleed:** a mic-friendly mix (drums and bass, comping muted) replaces the onset-based bleed
+  filter, which would have rejected correct chord tones.
+- **iOS Safari:** settings actually applied are logged, the sample rate is read rather than
+  assumed, `audioSession` is set to play-and-record, and wired headphones are suggested.
+  (Sources: WebKit bugs 179411, 236219, 218012, 281978, 311451; these are search summaries and
+  must be verified on device.)
+- **Guitar-specific rules:** legato onsets, ring-over, octave errors, and a rhythm-feedback
+  threshold.
+- **Targets:**
+  - latency targets made realistic (80 ms below A2, 60 ms above);
+  - real phone-recorded fixtures;
+  - a coverage floor so "unclear" can't hide errors;
+  - one after-loop fix hint when more than 30% of a loop is unclear.

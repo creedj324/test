@@ -227,11 +227,12 @@ interface SongSection {
   id: string;
   label: string;                // 'A', 'Verse 1', 'Chorus', ...
   role: 'intro'|'verse'|'prechorus'|'chorus'|'bridge'|'A'|'B'|'solo'|'outro';
+  energy?: 'low'|'high';        // switches backing style in audition (palm-muted/half-time vs full)
   bars: { chords: { symbol: string; beats: number }[] }[];
 }
 
 type SongwritingTechnique =     // THEORY_SPEC §11.3
-  'newStartingChord'|'relativeFlip'|'parallelModeSwitch'|'harmonicRhythm'|'reorderChords'
+  'tonicArrival'|'newStartingChord'|'relativeFlip'|'parallelModeSwitch'|'harmonicRhythm'|'reorderChords'
   |'pedalPoint'|'climbingBass'|'borrowedChords'|'newKeyArea'|'cycleOfDominants'
   |'secondaryDominantLeadIn'|'cadenceSetup'|'liftModulation'|'jazzReharm'|'phraseLength';
 
@@ -338,6 +339,7 @@ generateVoicings(c: ChordSymbol, family: VoicingShape['family'], tuning: Tuning)
 voiceLead(prog: ChordSymbol[], family, opts): Voicing[]             // smoothest path
 suggestSection(song: Song, from: string, role: SongSection['role'], opts: { style; bars; adventurousness: 1|2|3; seed }): SectionSuggestion[]
 explainTransition(a: SongSection, b: SongSection, key: KeyCenter): string[]
+compareSections(a: SongSection, b: SongSection): { tooSimilar: boolean; reasons: string[]; try: SongwritingTechnique[] }
 chordsThatFit(section: SongSection, barIndex: number, key: KeyCenter): { chord: ChordSymbol; why: string }[]
 fingerLine(notes: Midi[], opts: { tuning; maxStretch; preferredPosition? }): FretPos[]
 transpose(x, semitones)
@@ -372,13 +374,15 @@ transpose(x, semitones)
 ### 6.3 Pitch detection and grading (`src/pitch`)
 
 ```
-mic stream ─► AudioWorklet (2048-sample window, hop 256 @ 48 kHz)
+mic stream ─► AudioWorklet (window ~43 ms, hop ~5 ms; read AudioContext.sampleRate, never assume 48 kHz)
                ├─ RMS + spectral-flux onset detector
                └─ McLeod Pitch Method → (freqHz, clarity)
-           ─► noteTracker: median-filter frames, require ≥ 3 stable frames (~16 ms) and
-                           clarity ≥ 0.9, fold to MIDI, emit DetectedNote{midi, cents, tOn, tOff}
-           ─► bleed filter: drop detections that match a note the backing track is sounding
-                      at that moment and have no guitar-like onset
+           ─► noteTracker: median-filter frames, require ≥ 3 stable frames and enough clarity
+                           (≈ 0.9 below 200 Hz, lower for higher notes), limit the search to the
+                           exercise's expected notes ± 12 semitones, fold to MIDI,
+                           emit DetectedNote{midi, cents, tOn, tOff, confidence}
+           ─► bleed filter: drop a detection only if its pitch class matches the bass part AND
+                      its onset is within ±40 ms of a backing onset
            ─► grader: match DetectedNote to ExpectedNote[] within
                       timing window (default ±120 ms, minus estimated latency) and pitch rule
 ```
@@ -411,14 +415,42 @@ must never become a chore. These rules are acceptance criteria for every mic fea
    wrong when the app isn't sure. Target: under 2% of correctly played notes marked wrong on the
    recorded test fixtures.
 7. **Speaker bleed handled.** The backing track coming out of the phone speaker gets into the
-   mic. Headphones are suggested once (not nagged). Without headphones, the bleed filter
-   ignores detections matching the notes the backing is playing that have no guitar-like onset.
-   Request the mic with `echoCancellation`, `noiseSuppression` and `autoGainControl` all
-   **off**; those voice-call filters destroy musical pitch.
+   mic. Graded loops use a **mic-friendly mix** by default: drums and bass only, comping muted
+   (the comping plays the same chord tones you're aiming for), and the bass kept below the
+   exercise's note range. The bleed filter drops a detection only if its pitch class matches
+   the bass part **and** its onset is within ±40 ms of a backing onset. Otherwise the note is
+   accepted or marked "unclear", never "wrong". Wired headphones are suggested once (not
+   nagged). Bluetooth headsets switch to a low-quality mic and add 150–300 ms of output
+   latency.
+   - Request the mic with `echoCancellation`, `noiseSuppression` and `autoGainControl` off, then
+     read `track.getSettings()` and record what was actually applied: iOS Safari may honor only
+     `echoCancellation`, and turning it off can change the sample rate or channel layout.
+   - A/B test `echoCancellation: true` on fixtures. The browser's echo canceller subtracts the
+     page's own playback, which is a free bleed filter, though it may cut sustain.
+   - Pick the non-silent input channel.
+   - Where supported, set `navigator.audioSession.type = 'play-and-record'` before playback, so
+     the volume doesn't jump when the mic starts.
+   - Re-run passive latency estimation whenever the output device changes.
 8. **Hands stay on the guitar.** Graded loops start with a count-in, or optionally on your first
    played note ("play to start"). Results accumulate across repetitions automatically.
 9. **Works with what you have**: an acoustic guitar, or an electric through an amp, with the
    phone within about 1 m.
+10. **One fix, after the loop.** If more than 30% of a loop was "unclear", show one suggestion
+    after the loop: move closer, turn the backing down, or use headphones. Never show it
+    mid-loop.
+
+#### Guitar-specific detection rules
+
+- **Legato onsets.** Hammer-ons, pull-offs and slides have weak attacks. A new stable pitch at
+  least 1 semitone from the previous one, held ≥ 3 frames, counts as an onset. A slide is graded
+  on the pitch it settles at; pitches passed through in under 60 ms are ignored.
+- **Ring-over.** Notes in arpeggios ring into each other. Label each note from the first 30–80 ms
+  after its onset. When two pitches compete, mark the note "unclear", not "wrong".
+- **Octave errors.** On low strings the detector can lock onto a harmonic. An octave-only
+  mismatch is never "wrong": it counts as correct in pitch-class modes and "unclear" in
+  exact-note modes.
+- **Rhythm feedback threshold.** Report rushing or dragging only when the median deviation is
+  over 20 ms across at least 16 notes.
 
 - **Matching rules** depend on the exercise: exact MIDI note (lick playback, fret quiz), any
   octave of a pitch class (find-the-note), any member of a set (land on a chord tone), or a
